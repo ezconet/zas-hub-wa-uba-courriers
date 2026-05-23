@@ -19,11 +19,8 @@ function dispatchEnabled() {
 
 function registerHandlers() {
   waClient.events.on('messages', async (messages) => {
-    console.debug(`[HND-DEBUG] listener recebeu ${messages?.length ?? 0} msg(s)`);
     for (const msg of messages) {
       try {
-        const _t = extractText(msg).trim().toLowerCase();
-        console.debug(`[HND-DEBUG] from=${msg.key?.remoteJid} fromMe=${msg.key?.fromMe} hasMsg=${!!msg.message} text=${JSON.stringify(_t)} grpEq=${msg.key?.remoteJid === config.WA_GROUP_JID} enabled=${dispatchEnabled()}`);
         // R13: ignorar mensagens próprias (evita loop ao enviar no grupo)
         if (msg.key.fromMe) continue;
         if (!msg.message) continue;
@@ -34,7 +31,13 @@ function registerHandlers() {
 
         // Health check manual: "eu" no grupo de validação resolve o reteste (S15).
         // Escuta separada do dispatch — independe de dispatch_enabled.
-        if (config.WA_HEALTH_GROUP_JID && jid === config.WA_HEALTH_GROUP_JID) {
+        // Guard: se health == grupo de dispatch, NÃO trata como health (senão engole
+        // todo "eu" de dispatch). Dispatch tem prioridade; grupos devem ser distintos.
+        if (
+          config.WA_HEALTH_GROUP_JID &&
+          config.WA_HEALTH_GROUP_JID !== config.WA_GROUP_JID &&
+          jid === config.WA_HEALTH_GROUP_JID
+        ) {
           health.notifyHealthEu();
           continue;
         }
@@ -47,11 +50,9 @@ function registerHandlers() {
           continue;
         }
 
-        console.debug(`[HND-DEBUG] -> handleEu (typeof=${typeof euDetector.handleEu})`);
         await euDetector.handleEu(msg);
-        console.debug('[HND-DEBUG] <- handleEu retornou');
       } catch (err) {
-        console.error('[HANDLER] Erro ao processar mensagem:', err && (err.stack || err.message));
+        console.error('[HANDLER] Erro ao processar mensagem:', err.message);
       }
     }
   });

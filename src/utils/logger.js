@@ -33,7 +33,7 @@ function installConsole(levelName = 'info') {
 
   function emit(level, sink, args) {
     if (!passes(level, threshold)) return;
-    if (level === 'error' && isNoise(args)) return;
+    if (isNoise(args)) return; // ruído interno do Baileys/libsignal em qualquer nível
     sink(...buildLine(level, args));
   }
 

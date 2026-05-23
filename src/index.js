@@ -23,6 +23,12 @@ const PUBLIC_ROUTES = new Set(['/health/status']);
 async function main() {
   console.log('=== ZasHub WA Dispatch API ===');
 
+  // Footgun guard: health group igual ao grupo de dispatch faz o health-check
+  // engolir todos os "eu" antes do dispatch. Avisa alto (o handler já protege).
+  if (config.WA_HEALTH_GROUP_JID && config.WA_HEALTH_GROUP_JID === config.WA_GROUP_JID) {
+    console.warn('[MAIN] ATENÇÃO: WA_HEALTH_GROUP_JID == WA_GROUP_JID. Health check desativado para não engolir "eu" de dispatch. Use grupos diferentes (ou deixe WA_HEALTH_GROUP_JID vazio).');
+  }
+
   // 1. Conectar ao banco SQLite (cria schema + seed de estado)
   db.connect(config.DB_PATH);
 

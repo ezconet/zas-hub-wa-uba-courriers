@@ -139,9 +139,6 @@ const waClient = {
     sock.ev.process(async (events) => {
       this._lastEventAt = Date.now();
 
-      // DEBUG (LOG_LEVEL=debug): quais eventos chegam do WhatsApp
-      console.debug(`[WA-DEBUG] eventos: ${Object.keys(events).join(', ')}`);
-
       if (events['contacts.upsert']) {
         for (const contact of events['contacts.upsert']) {
           if (contact.lid && contact.id) {
@@ -160,13 +157,6 @@ const waClient = {
 
       if (events['messages.upsert']) {
         const upsert = events['messages.upsert'];
-        // DEBUG: tipo + detalhe de cada msg (revela se chega mas não decifra)
-        console.debug(`[WA-DEBUG] messages.upsert type=${upsert.type} n=${upsert.messages?.length ?? 0}`);
-        for (const m of (upsert.messages || [])) {
-          const keys = m.message ? Object.keys(m.message).join(',') : '(sem message)';
-          const txt = m.message?.conversation ?? m.message?.extendedTextMessage?.text ?? null;
-          console.debug(`[WA-DEBUG] msg jid=${m.key?.remoteJid} part=${m.key?.participant} fromMe=${m.key?.fromMe} stub=${m.messageStubType ?? '-'} msg=${keys} text=${JSON.stringify(txt)}`);
-        }
         if (upsert.type === 'notify') {
           this.events.emit('messages', upsert.messages);
         }
