@@ -1,0 +1,21 @@
+# Dependências
+node_modules/
+
+# Segredos / ambiente
+.env
+
+# Credenciais Baileys — NUNCA commitar (sessão WhatsApp)
+auth/
+
+# Estado interno SQLite
+data/
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

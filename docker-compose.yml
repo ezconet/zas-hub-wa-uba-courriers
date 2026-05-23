@@ -1,0 +1,19 @@
+version: '3.9'
+
+services:
+  dispatch-api:
+    build: .
+    container_name: zas-hub-wa-api
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3001:3001"
+    volumes:
+      - ./auth:/app/auth
+      - ./data:/app/data
+    env_file:
+      - .env
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3001/health/status"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
