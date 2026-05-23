@@ -22,6 +22,7 @@ const processingOrders = new Set();
  * dispara o webhook para o ZasHub decidir quem ganhou.
  */
 async function handleEu(msg) {
+  console.debug('[EU-DEBUG] handleEu entrou');
   const rawJid = msg.key.participant;
   const motoboyJid = waClient.resolveJid(rawJid) || rawJid;
   if (motoboyJid !== rawJid) {

@@ -47,9 +47,11 @@ function registerHandlers() {
           continue;
         }
 
+        console.debug(`[HND-DEBUG] -> handleEu (typeof=${typeof euDetector.handleEu})`);
         await euDetector.handleEu(msg);
+        console.debug('[HND-DEBUG] <- handleEu retornou');
       } catch (err) {
-        console.error('[HANDLER] Erro ao processar mensagem:', err.message);
+        console.error('[HANDLER] Erro ao processar mensagem:', err && (err.stack || err.message));
       }
     }
   });
