@@ -1,19 +1,20 @@
-version: '3.9'
-
 services:
   dispatch-api:
     build: .
     container_name: zas-hub-wa-api
     restart: unless-stopped
     ports:
-      - "127.0.0.1:3001:3001"
-    volumes:
-      - ./auth:/app/auth
-      - ./data:/app/data
+      - "127.0.0.1:3001:3001"   # só localhost — Nginx faz o proxy externo
+    environment:
+      - PORT=3001               # fixa a porta no container (sobrescreve PORT do .env)
     env_file:
       - .env
+    volumes:
+      - ./auth:/app/auth        # sessão Baileys (persistir entre deploys; uid 1000)
+      - ./data:/app/data        # SQLite (uid 1000)
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:3001/health/status"]
+      # node fetch (slim não tem wget/curl). /health/status é público.
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3001/health/status').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
       interval: 30s
       timeout: 5s
       retries: 3

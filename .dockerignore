@@ -1,0 +1,17 @@
+# Reduz o contexto de build (e evita vazar segredo/sessão na imagem).
+node_modules
+.git
+.gitignore
+.dockerignore
+
+# Segredos e estado — nunca na imagem
+.env
+.env.*
+auth
+data
+
+# Não vão pra imagem (só src é copiado)
+scripts
+_reference
+specs
+*.md
