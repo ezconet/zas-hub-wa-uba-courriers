@@ -24,8 +24,13 @@ module.exports = {
   AWS_REGION: process.env.AWS_REGION || 'us-east-1',
   AWS_ACCESS_KEY_ID: process.env.AWS_ACCESS_KEY_ID || '',
   AWS_SECRET_ACCESS_KEY: process.env.AWS_SECRET_ACCESS_KEY || '',
+  AWS_S3_QR_KEY: process.env.AWS_S3_QR_KEY || 'courrier-notify/qr.png', // key fixa (sobrescreve)
+  QR_PRESIGN_TTL_S: parseInt(process.env.QR_PRESIGN_TTL_S || '900', 10),  // 15min
 
-  // Email (reconexão)
+  // SNS (notificação de QR por email — você configura topic→email)
+  SNS_TOPIC_ARN: process.env.SNS_TOPIC_ARN || '',
+
+  // Email SMTP (fallback de QR, opcional — preferir SNS)
   SMTP_HOST: process.env.SMTP_HOST || '',
   SMTP_PORT: parseInt(process.env.SMTP_PORT || '587', 10),
   SMTP_USER: process.env.SMTP_USER || '',

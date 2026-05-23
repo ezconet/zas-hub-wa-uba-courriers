@@ -51,15 +51,32 @@ async function main() {
   check('reconnect → estado persistido', db.getState('health_status') === 'reconnecting');
   check('reconnect → waClient.reconnect chamado', reconnectCalled === true);
 
-  // --- qrNotifier.handleQr orquestração (S3/email stubbados) ---
-  let uploadedBuf = null, emailedUrl = null;
+  // --- qrNotifier.handleQr orquestração (S3/SNS/webhook stubbados) ---
+  const webhook = require('../src/services/webhook');
+  let uploadedBuf = null, snsUrl = null, webhookUrl = null, snsCount = 0;
   config.AWS_BUCKET = 'bucket'; config.AWS_ACCESS_KEY_ID = 'k'; config.AWS_SECRET_ACCESS_KEY = 's';
-  config.SMTP_HOST = 'smtp'; config.NOTIFY_EMAIL = 'op@zashub.com.br';
-  qrNotifier.uploadQrToS3 = async (buf) => { uploadedBuf = buf; return 'https://s3/qr.png'; };
-  qrNotifier.sendQrEmail = async (url) => { emailedUrl = url; };
+  config.SNS_TOPIC_ARN = 'arn:aws:sns:us-east-1:123:qr';
+  qrNotifier.uploadQrToS3 = async (buf) => { uploadedBuf = buf; return { url: 'https://s3/qr.png?sig', expiresAt: '2026-01-01T00:00:00Z' }; };
+  qrNotifier.publishSns = async (url) => { snsUrl = url; snsCount += 1; };
+  webhook.sendQr = async (url) => { webhookUrl = url; };
+
   await qrNotifier.handleQr('QR-STRING-EXEMPLO');
+  await new Promise(r => setTimeout(r, 50)); // webhook/sns são fire-and-forget
   check('handleQr: gerou PNG e subiu ao S3', Buffer.isBuffer(uploadedBuf) && uploadedBuf.length > 0);
-  check('handleQr: email com URL presigned', emailedUrl === 'https://s3/qr.png');
+  check('handleQr: webhook /wa/qr com URL presigned', webhookUrl === 'https://s3/qr.png?sig');
+  check('handleQr: SNS publicado com URL', snsUrl === 'https://s3/qr.png?sig');
+  check('handleQr: health_status = awaiting_qr', db.getState('health_status') === 'awaiting_qr');
+
+  // throttle: 2º QR seguido NÃO reenvia SNS
+  await qrNotifier.handleQr('QR-STRING-2');
+  await new Promise(r => setTimeout(r, 50));
+  check('handleQr: SNS throttled (não reenvia em seguida)', snsCount === 1);
+
+  // onConnected reseta throttle → próximo QR reenvia SNS
+  qrNotifier.onConnected();
+  await qrNotifier.handleQr('QR-STRING-3');
+  await new Promise(r => setTimeout(r, 50));
+  check('onConnected reseta throttle → SNS reenvia', snsCount === 2);
 
   // --- qrNotifier sem S3 → fallback terminal (não lança) ---
   config.AWS_BUCKET = ''; let threw = false;

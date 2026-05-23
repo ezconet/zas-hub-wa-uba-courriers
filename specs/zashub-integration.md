@@ -72,7 +72,8 @@ COURRIER_WEBHOOK_SECRET=<= ZASHUB_WEBHOOK_SECRET>  # valida webhooks recebidos
   `react`, `messageSend`. Pode implementar a interface `WhatsAppProvider` existente
   (`src/modules/whatsapp/WhatsAppProvider.ts`) ou ser um client dedicado do módulo dispatch.
 - **Rota webhook** `src/app/api/wa/eu-received/route.ts` — recebe os "eu"s coalescidos.
-- **Rota webhook** `src/app/api/wa/connected/route.ts` — opcional (log/healthcheck).
+- **Rota webhook** `src/app/api/wa/connected/route.ts` — recovery (limpa banner de QR).
+- **Rota webhook** `src/app/api/wa/qr/route.ts` — recebe URL do QR; mostra banner + imagem na tela.
 
 ### Trocar (no caminho de motoboy)
 - `src/modules/dispatch/DispatchService.ts` — ao marcar pedido pronto (`fluxoB`),
@@ -180,7 +181,20 @@ a courrier-notify **não marca o pedido como disparado** → um próximo "eu" re
 ```json
 { "timestamp": "ISO" }
 ```
-- Disparado quando a courrier-notify (re)conecta ao WhatsApp. Opcional: log/limpar estado degradado.
+- Disparado quando a courrier-notify (re)conecta ao WhatsApp. ZasHub: limpar o banner de
+  "WhatsApp caiu" / esconder o QR.
+
+### 6.3 `POST /wa/qr` — WhatsApp caiu, precisa re-parear
+```json
+{ "url": "https://bucket.s3...presigned...", "expiresAt": "ISO" }
+```
+- Disparado quando a courrier-notify precisa de novo QR (logout/sessão inválida).
+- `url` = imagem PNG do QR no S3, **pré-assinada** (privada, expira em ~15min).
+- **ZasHub:** mostrar banner "WhatsApp do motoboy caiu" + renderizar `<img src={url}>` na tela
+  para o operador escanear. Como o Baileys rotaciona o QR (~20s), **chega um `/wa/qr` novo a
+  cada rotação** — sempre usar a `url` mais recente. Quando chegar `/wa/connected`, remover o banner.
+- ⚠️ A `url` permite vincular a conta — não logar/expor publicamente; ela já expira sozinha.
+- Fallback: o operador também recebe a mesma `url` por **email (SNS)** caso o hub não esteja aberto.
 
 ---
 
@@ -249,7 +263,8 @@ a courrier-notify **não marca o pedido como disparado** → um próximo "eu" re
 - [ ] `DispatchService`: announce do pedido pronto → courrier (guardar `groupMsgId`).
 - [ ] `DispatchNotifications`: react + PV via courrier.
 - [ ] Rota `POST /api/wa/eu-received` (valida secret, escolhe vencedor, react + PV, marca accepted, idempotente).
-- [ ] Rota `POST /api/wa/connected` (opcional).
+- [ ] Rota `POST /api/wa/connected` (limpa banner de QR).
+- [ ] Rota `POST /api/wa/qr` (valida secret; mostra banner "WhatsApp caiu" + `<img src={url}>`; usa sempre a url mais recente).
 - [ ] Aposentar `AcceptanceQueue` e o parsing de "eu" do webhook Evolution **no caminho de motoboy**.
 - [ ] Manter Evolution para transacional do cliente.
 - [ ] Configurar `WA_GROUP_JID` (courrier) = grupo de motoboys; secrets batendo nos dois lados.

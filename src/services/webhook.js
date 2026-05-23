@@ -29,4 +29,9 @@ function sendConnected(timestamp) {
   return postWebhook('/wa/connected', { timestamp });
 }
 
-module.exports = { postWebhook, sendEuReceived, sendConnected };
+// QR necessário: ZasHub mostra banner "WhatsApp caiu" + a imagem do QR (url presigned).
+function sendQr(url, expiresAt) {
+  return postWebhook('/wa/qr', { url, expiresAt });
+}
+
+module.exports = { postWebhook, sendEuReceived, sendConnected, sendQr };

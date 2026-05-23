@@ -6,6 +6,7 @@ const {
 } = require('@whiskeysockets/baileys');
 const qrcode = require('qrcode-terminal');
 const path = require('path');
+const fs = require('fs');
 const EventEmitter = require('events');
 const config = require('../config');
 
@@ -45,6 +46,16 @@ const waClient = {
     console.warn('[WA] Reconexão forçada solicitada.');
     this._connecting = false;
     this.sock.end(undefined);
+  },
+
+  // Apaga a pasta de credenciais Baileys (sessão suja). Próximo connect() gera QR novo.
+  _wipeAuth() {
+    try {
+      fs.rmSync(AUTH_PATH, { recursive: true, force: true });
+      console.warn(`[WA] Sessão apagada: ${AUTH_PATH}`);
+    } catch (e) {
+      console.error('[WA] Falha ao apagar auth:', e.message);
+    }
   },
 
   async connect() {
@@ -106,15 +117,19 @@ const waClient = {
         this._stopHealthCheck();
         this.events.emit('disconnected');
         const statusCode = lastDisconnect?.error?.output?.statusCode;
-        const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
 
-        if (shouldReconnect) {
-          console.warn(`[WA] Conexão encerrada (código ${statusCode}). Reconectando...`);
+        if (statusCode === DisconnectReason.loggedOut) {
+          // Sessão inválida: limpa credenciais e reconecta — Baileys emite novo QR
+          // (qrNotifier sobe pro S3 + SNS + webhook /wa/qr).
+          console.warn('[WA] Logout detectado. Limpando sessão e gerando novo QR...');
+          this._wipeAuth();
           this._connecting = false;
           await this.connect();
         } else {
-          console.error('[WA] Sessão encerrada (logout). Exclua a pasta src/auth/baileys_auth e reinicie.');
-          process.exit(1);
+          // Queda transitória: reconecta mantendo a sessão.
+          console.warn(`[WA] Conexão encerrada (código ${statusCode}). Reconectando...`);
+          this._connecting = false;
+          await this.connect();
         }
       }
     });

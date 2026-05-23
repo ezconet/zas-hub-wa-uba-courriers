@@ -2,100 +2,116 @@ const config = require('../config');
 const QRCode = require('qrcode');
 const { withRetry } = require('../utils/retry');
 const waClient = require('../wa/client');
+const webhook = require('./webhook');
+const db = require('../db/database');
 
-const PRESIGN_TTL_S = 30 * 60; // URL válida por 30 minutos
+// Evita spam de email: SNS no máximo 1x a cada 10min (reset no 'connected').
+const SNS_MIN_INTERVAL_MS = 10 * 60 * 1000;
+let lastSnsAt = 0;
 
 function s3Configured() {
   return !!(config.AWS_BUCKET && config.AWS_ACCESS_KEY_ID && config.AWS_SECRET_ACCESS_KEY);
 }
-
-function smtpConfigured() {
-  return !!(config.SMTP_HOST && config.NOTIFY_EMAIL);
+function snsConfigured() {
+  return !!config.SNS_TOPIC_ARN;
 }
 
-// Upload do PNG no S3 (ACL private) + URL pré-assinada (TTL 30min).
+// Upload do PNG no S3 em KEY FIXA (sobrescreve, sem acúmulo) + URL pré-assinada (objeto privado).
 async function uploadQrToS3(buffer) {
   const { S3Client, PutObjectCommand, GetObjectCommand } = require('@aws-sdk/client-s3');
   const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
 
   const s3 = new S3Client({
     region: config.AWS_REGION,
-    credentials: {
-      accessKeyId: config.AWS_ACCESS_KEY_ID,
-      secretAccessKey: config.AWS_SECRET_ACCESS_KEY,
-    },
+    credentials: { accessKeyId: config.AWS_ACCESS_KEY_ID, secretAccessKey: config.AWS_SECRET_ACCESS_KEY },
   });
+  const Key = config.AWS_S3_QR_KEY;
 
-  const key = `qr-codes/qr-${Date.now()}.png`;
   await withRetry(
-    () => s3.send(new PutObjectCommand({
-      Bucket: config.AWS_BUCKET,
-      Key: key,
-      Body: buffer,
-      ContentType: 'image/png',
-    })),
+    () => s3.send(new PutObjectCommand({ Bucket: config.AWS_BUCKET, Key, Body: buffer, ContentType: 'image/png' })),
     3, 'S3 upload',
   );
 
-  return getSignedUrl(
+  const url = await getSignedUrl(
     s3,
-    new GetObjectCommand({ Bucket: config.AWS_BUCKET, Key: key }),
-    { expiresIn: PRESIGN_TTL_S },
+    new GetObjectCommand({ Bucket: config.AWS_BUCKET, Key }),
+    { expiresIn: config.QR_PRESIGN_TTL_S },
   );
+  const expiresAt = new Date(Date.now() + config.QR_PRESIGN_TTL_S * 1000).toISOString();
+  return { url, expiresAt };
 }
 
-// Email com o link do QR (Nodemailer).
-async function sendQrEmail(url) {
-  const nodemailer = require('nodemailer');
-  const transport = nodemailer.createTransport({
-    host: config.SMTP_HOST,
-    port: config.SMTP_PORT,
-    secure: config.SMTP_PORT === 465,
-    auth: config.SMTP_USER ? { user: config.SMTP_USER, pass: config.SMTP_PASS } : undefined,
+// Publica no SNS (você configura subscription topic→email).
+async function publishSns(url, expiresAt) {
+  const { SNSClient, PublishCommand } = require('@aws-sdk/client-sns');
+  const sns = new SNSClient({
+    region: config.AWS_REGION,
+    credentials: { accessKeyId: config.AWS_ACCESS_KEY_ID, secretAccessKey: config.AWS_SECRET_ACCESS_KEY },
   });
+  const ttlMin = Math.round(config.QR_PRESIGN_TTL_S / 60);
 
   await withRetry(
-    () => transport.sendMail({
-      from: config.SMTP_USER || 'no-reply@zashub.com.br',
-      to: config.NOTIFY_EMAIL,
-      subject: '[ZasHub] WhatsApp QR Code — ação necessária',
-      text: `Escaneie o QR para reconectar o WhatsApp (link válido por 30min):\n${url}`,
-    }),
-    3, 'email QR',
+    () => sns.send(new PublishCommand({
+      TopicArn: config.SNS_TOPIC_ARN,
+      Subject: '[courrier-notify] WhatsApp caiu — escaneie o QR',
+      Message:
+        `O WhatsApp do courrier-notify desconectou e precisa de novo pareamento.\n\n` +
+        `Escaneie o QR (link válido ~${ttlMin}min, expira ${expiresAt}):\n${url}\n\n` +
+        `Ou abra o ZasHub para escanear na tela.`,
+    })),
+    3, 'SNS publish',
   );
 }
 
-// Handler do evento 'qr' do Baileys: PNG → S3 → email. Falhas não-fatais
-// (QR sempre sai no terminal como fallback).
+function _shouldSns() {
+  return Date.now() - lastSnsAt > SNS_MIN_INTERVAL_MS;
+}
+
+// Handler do evento 'qr': PNG → S3 (presigned) → webhook /wa/qr → SNS (throttled).
+// Tudo não-fatal: o QR também sai no terminal (fallback) via client.js.
 async function handleQr(qr) {
   try {
     const buffer = await QRCode.toBuffer(qr, { type: 'png', width: 400 });
+
+    try { db.setState('health_status', 'awaiting_qr'); } catch { /* db pode não estar pronto */ }
 
     if (!s3Configured()) {
       console.warn('[AUTH] S3 não configurado — QR disponível apenas no terminal.');
       return;
     }
 
-    const url = await self.uploadQrToS3(buffer);
-    console.log(`[AUTH] QR enviado ao S3 (TTL 30min): ${url}`);
+    const { url, expiresAt } = await self.uploadQrToS3(buffer);
+    console.log(`[AUTH] QR no S3 (presigned, expira ${expiresAt})`);
 
-    if (smtpConfigured()) {
-      await self.sendQrEmail(url);
-      console.log(`[AUTH] Email com QR enviado para ${config.NOTIFY_EMAIL}`);
-    } else {
-      console.warn('[AUTH] SMTP não configurado — QR apenas no S3.');
+    // Webhook a cada QR: a tela do ZasHub sempre mostra o QR atual (Baileys rotaciona).
+    webhook.sendQr(url, expiresAt).catch((e) => console.warn('[AUTH] webhook /wa/qr falhou:', e.message));
+
+    // SNS (email) só 1x por episódio (throttle) — fallback se o hub não estiver aberto.
+    if (snsConfigured() && _shouldSns()) {
+      lastSnsAt = Date.now();
+      self.publishSns(url, expiresAt)
+        .then(() => console.log(`[AUTH] SNS publicado para ${config.SNS_TOPIC_ARN}`))
+        .catch((e) => { lastSnsAt = 0; console.warn('[AUTH] SNS falhou:', e.message); });
+    } else if (!snsConfigured()) {
+      console.warn('[AUTH] SNS_TOPIC_ARN não configurado — sem email de QR.');
     }
   } catch (err) {
     console.error('[AUTH] Falha ao processar QR:', err.message);
   }
 }
 
+// Reseta o throttle ao reconectar (próxima queda manda email na hora).
+function onConnected() {
+  lastSnsAt = 0;
+}
+
 function init() {
   waClient.events.on('qr', (qr) => self.handleQr(qr));
+  waClient.events.on('connected', () => onConnected());
   console.log('[AUTH] Notificador de QR ativo.');
 }
 
-// self = objeto exportado; handleQr chama self.uploadQrToS3/self.sendQrEmail
-// para permitir override (testes) e manter um único ponto de verdade.
-const self = { init, handleQr, uploadQrToS3, sendQrEmail };
+// self = objeto exportado; handleQr chama self.uploadQrToS3/self.publishSns
+// para permitir override em testes e manter um único ponto de verdade.
+const self = { init, handleQr, uploadQrToS3, publishSns, onConnected };
 module.exports = self;

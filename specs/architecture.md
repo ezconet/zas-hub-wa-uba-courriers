@@ -147,6 +147,15 @@ POST {ZASHUB_WEBHOOK_URL}/wa/connected
 }
 ```
 
+### `qr` — WhatsApp caiu, precisa re-parear
+```json
+POST {ZASHUB_WEBHOOK_URL}/wa/qr
+{
+  "url": "https://bucket.s3...presigned...",
+  "expiresAt": "ISO string"
+}
+```
+
 ---
 
 ## Fluxo: "eu" Detection
@@ -190,17 +199,28 @@ Msg recebida no grupo WA_GROUP_JID
 ## Fluxo: Reconexão
 
 ```
-1. Fechar socket Baileys
-2. Limpar auth state (ou manter — depende se é logout ou reconnect)
-3. Gerar novo QR code (Baileys emite evento 'qr')
-4. Converter QR string → PNG
-5. Upload PNG para S3 com URL pré-assinada (TTL: 30min)
-6. Enviar email com link da URL
-7. On connection='open':
-   a. Estado → healthy
-   b. Enviar WA para OWNER_JID: "✅ WhatsApp reconectado em {timestamp}"
-   c. Disparar webhook /wa/connected para ZasHub
+Queda do socket (connection='close'):
+  ├── statusCode == loggedOut (sessão inválida)
+  │     1. APAGAR pasta auth/baileys_auth (sessão suja)
+  │     2. connect() limpo → Baileys emite 'qr'
+  │     3. QR string → PNG
+  │     4. Upload S3 em KEY FIXA (sobrescreve) → URL pré-assinada (TTL 15min, objeto privado)
+  │     5. Webhook POST /wa/qr { url, expiresAt } → ZasHub mostra banner + QR na tela
+  │     6. SNS publish (email) — throttle 1x/10min — fallback se hub fechado
+  │        (Baileys rotaciona o QR ~20s → repete 4-5 a cada rotação; SNS só 1x/episódio)
+  │
+  └── outro código (queda transitória)
+        reconecta MANTENDO a sessão (sem QR)
+
+On connection='open':
+  a. Estado → healthy ; last_connected_at = now
+  b. WA para OWNER_JID: "✅ WhatsApp reconectado em {timestamp}" (se OWNER_JID setado)
+  c. Webhook POST /wa/connected { timestamp } → ZasHub limpa o banner
+  d. Reseta throttle do SNS
 ```
+
+> **Segurança:** a imagem do QR permite vincular a conta (sequestro se vazar). Por isso o
+> objeto S3 é **privado** e a URL é **pré-assinada com TTL curto** — nunca pública/permanente.
 
 ---
 
