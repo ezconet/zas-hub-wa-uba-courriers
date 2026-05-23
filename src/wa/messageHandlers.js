@@ -19,8 +19,11 @@ function dispatchEnabled() {
 
 function registerHandlers() {
   waClient.events.on('messages', async (messages) => {
+    console.debug(`[HND-DEBUG] listener recebeu ${messages?.length ?? 0} msg(s)`);
     for (const msg of messages) {
       try {
+        const _t = extractText(msg).trim().toLowerCase();
+        console.debug(`[HND-DEBUG] from=${msg.key?.remoteJid} fromMe=${msg.key?.fromMe} hasMsg=${!!msg.message} text=${JSON.stringify(_t)} grpEq=${msg.key?.remoteJid === config.WA_GROUP_JID} enabled=${dispatchEnabled()}`);
         // R13: ignorar mensagens próprias (evita loop ao enviar no grupo)
         if (msg.key.fromMe) continue;
         if (!msg.message) continue;
