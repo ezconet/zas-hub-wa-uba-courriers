@@ -164,7 +164,8 @@ const waClient = {
         console.debug(`[WA-DEBUG] messages.upsert type=${upsert.type} n=${upsert.messages?.length ?? 0}`);
         for (const m of (upsert.messages || [])) {
           const keys = m.message ? Object.keys(m.message).join(',') : '(sem message)';
-          console.debug(`[WA-DEBUG] msg jid=${m.key?.remoteJid} part=${m.key?.participant} fromMe=${m.key?.fromMe} stub=${m.messageStubType ?? '-'} msg=${keys}`);
+          const txt = m.message?.conversation ?? m.message?.extendedTextMessage?.text ?? null;
+          console.debug(`[WA-DEBUG] msg jid=${m.key?.remoteJid} part=${m.key?.participant} fromMe=${m.key?.fromMe} stub=${m.messageStubType ?? '-'} msg=${keys} text=${JSON.stringify(txt)}`);
         }
         if (upsert.type === 'notify') {
           this.events.emit('messages', upsert.messages);
