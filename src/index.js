@@ -12,6 +12,7 @@ const waClient = require('./wa/client');
 const { registerHandlers } = require('./wa/messageHandlers');
 const webhook = require('./services/webhook');
 const qrNotifier = require('./services/qrNotifier');
+const muteWatch = require('./services/muteWatch');
 const dispatchRoutes = require('./routes/dispatch');
 const controlRoutes = require('./routes/control');
 const healthRoutes = require('./routes/health');
@@ -35,6 +36,7 @@ async function main() {
   // 2. Registrar listeners ANTES de conectar (evita perder o 1º evento 'connected')
   registerHandlers();
   qrNotifier.init(); // listener de 'qr' → PNG → S3 → email (S17)
+  muteWatch.init();  // watchdog de "grupo mudo" → wipe+reconnect se a leitura morrer
   waClient.events.on('connected', (ts) => {
     db.setState('health_status', 'healthy');
     db.setState('last_connected_at', ts);

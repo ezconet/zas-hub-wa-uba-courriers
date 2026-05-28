@@ -44,6 +44,13 @@ module.exports = {
   DISPATCH_QUEUE_WINDOW_MS: parseInt(process.env.DISPATCH_QUEUE_WINDOW_MS || '4000', 10),
   LOG_LEVEL: (process.env.LOG_LEVEL || 'info').toLowerCase(),
 
+  // Watchdog de "grupo mudo" (sender-keys quebradas: msgs chegam mas não decifram).
+  // Passivo conta stub=2 do grupo real; confirma via probe no grupo de teste; se mudo, wipe+reconnect.
+  WA_PROBE_GROUP_JID: process.env.WA_PROBE_GROUP_JID || '', // grupo de teste p/ probe (≠ grupo real); vazio = watchdog off
+  MUTE_UNDECRYPTED_THRESHOLD: parseInt(process.env.MUTE_UNDECRYPTED_THRESHOLD || '3', 10),
+  MUTE_PROBE_WAIT1_MS: parseInt(process.env.MUTE_PROBE_WAIT1_MS || '300000', 10), // 5min
+  MUTE_PROBE_WAIT2_MS: parseInt(process.env.MUTE_PROBE_WAIT2_MS || '120000', 10), // 2min
+
   // Merchants (mapeamento merchantId → dados de retirada)
   MERCHANTS: {
     'c943d847-0ab5-4147-aa02-68df78415ebf': { name: 'Zas', pickupAddress: 'Rua Capitao Felipe, 309', pickupBairro: 'Itagua' },

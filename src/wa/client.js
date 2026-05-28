@@ -48,6 +48,14 @@ const waClient = {
     this.sock.end(undefined);
   },
 
+  // Repair forçado: apaga sessão + reconecta → Baileys gera QR novo (qrNotifier notifica).
+  // Usado pelo watchdog de "grupo mudo" quando a leitura do grupo morre.
+  forceRepair() {
+    console.warn('[WA] forceRepair: sessão suja, apagando e repareando...');
+    this._wipeAuth();
+    this.reconnect();
+  },
+
   // Apaga a pasta de credenciais Baileys (sessão suja). Próximo connect() gera QR novo.
   _wipeAuth() {
     try {
@@ -157,6 +165,8 @@ const waClient = {
 
       if (events['messages.upsert']) {
         const upsert = events['messages.upsert'];
+        // Watchdog de grupo mudo precisa ver TODAS as msgs (inclusive não-decifradas/stub).
+        this.events.emit('rawUpsert', upsert);
         if (upsert.type === 'notify') {
           this.events.emit('messages', upsert.messages);
         }
