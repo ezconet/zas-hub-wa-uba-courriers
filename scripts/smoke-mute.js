@@ -12,7 +12,7 @@ const waClient = require('../src/wa/client');
 const probes = [];
 let repaired = 0;
 waClient.sendText = async (jid) => { probes.push(jid); return { key: { id: 'x' } }; };
-waClient.forceRepair = () => { repaired += 1; };
+waClient.reconnect = () => { repaired += 1; };
 
 const mute = require('../src/services/muteWatch');
 
@@ -48,7 +48,7 @@ async function main() {
   mute.observeUpsert(grpStub()); // threshold → confirm
   await sleep(300); // WAIT1(80) + WAIT2(80) + folga
   check('T3: 2 probes enviados sem leitura', probes.length >= 2);
-  check('T3: grupo mudo confirmado → forceRepair chamado', repaired === 1);
+  check('T3: grupo mudo confirmado → reconnect chamado', repaired === 1);
 
   console.log(`\n${pass} passed, ${fail} failed`);
   process.exit(fail ? 1 : 0);

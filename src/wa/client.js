@@ -25,6 +25,18 @@ const waClient = {
   _lastEventAt: 0,
   _healthTimer: null,
   _lidToJid: new Map(), // @lid → @s.whatsapp.net
+  _msgStore: new Map(), // id → { message } — serve retry receipts (getMessage); cap ~1000 FIFO
+
+  // Guarda conteúdo da msg enviada para reenvio em retry receipt.
+  // Sem isso, getMessage retorna undefined e a msg fica "Aguardando mensagem" pra sempre.
+  _rememberMsg(result) {
+    if (result?.key?.id && result.message) {
+      this._msgStore.set(result.key.id, { message: result.message });
+      if (this._msgStore.size > 1000) {
+        this._msgStore.delete(this._msgStore.keys().next().value);
+      }
+    }
+  },
 
   // Resolve JID do tipo @lid para @s.whatsapp.net usando o mapa de contatos.
   // Retorna null se o LID ainda não foi mapeado.
@@ -78,8 +90,10 @@ const waClient = {
       auth: state,
       printQRInTerminal: false,
       syncFullHistory: false,
-      // Necessário para evitar que retries internos do WA quebrem o pipeline de eventos
-      getMessage: async () => undefined,
+      // Retry receipt: WA pede reenvio quando destinatário não decifra.
+      // Servir conteúdo armazenado → Baileys re-encripta e reenvia → "Aguardando mensagem" some.
+      // Retornar undefined (msg desconhecida) é seguro — só não reenvia.
+      getMessage: async (key) => this._msgStore.get(key.id)?.message || undefined,
       logger: { level: 'silent', trace: () => {}, debug: () => {}, info: () => {}, warn: () => {}, error: () => {}, fatal: () => {}, child: () => ({ level: 'silent', trace: () => {}, debug: () => {}, info: () => {}, warn: () => {}, error: () => {}, fatal: () => {}, child: () => ({}) }) },
     });
 
@@ -198,6 +212,7 @@ const waClient = {
   async sendText(jid, text) {
     if (!this.sock) throw new Error('[WA] Socket não inicializado.');
     const result = await this.sock.sendMessage(jid, { text });
+    this._rememberMsg(result);
     return result;
   },
 

@@ -58,9 +58,12 @@ async function startConfirm() {
   if (await waitRead(WAIT2)) return finish(true);
 
   // Sem nenhuma leitura decifrada após os 2 probes → mudo confirmado.
-  console.error('[MUTE] Grupo mudo confirmado (sem leitura). Apagando auth e repareando (novo QR).');
+  // NÃO apagar auth: _wipeAuth reseta a identidade → toda sessão de saída pros usuários
+  // quebra → enxurrada de "Aguardando mensagem". Sender-key de grupo se reconcilia com
+  // reconnect (re-busca metadata + sender-keys) sem detonar sessões 1-a-1.
+  console.error('[MUTE] Grupo mudo confirmado (sem leitura). Reconectando socket (mantém sessão).');
   finish(false);
-  waClient.forceRepair();
+  waClient.reconnect();
 }
 
 async function sendProbe(n) {
