@@ -54,6 +54,7 @@ module.exports = async function dispatchRoutes(fastify) {
 
     const msgKey = { remoteJid: config.WA_GROUP_JID, id: euMsgId, fromMe: false };
     if (euJid) msgKey.participant = euJid;
+    log.info(`react euMsgId=${euMsgId} euJid=${euJid || '-'} emoji=${emoji}`);
     await waClient.sendReaction(config.WA_GROUP_JID, msgKey, emoji);
     return { ok: true };
   });

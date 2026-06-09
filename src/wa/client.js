@@ -17,6 +17,10 @@ const AUTH_PATH = path.resolve(config.AUTH_PATH);
 const HEALTH_CHECK_INTERVAL_MS = 3 * 60 * 1000; // 3 minutos
 const HEALTH_STALE_THRESHOLD_MS = 5 * 60 * 1000; // 5 minutos sem nenhum evento
 
+// Idade máxima para reenviar uma msg em retry receipt. Acima disso, getMessage
+// retorna undefined → WhatsApp não ressuscita announce de pedido já entregue.
+const RETRY_RESEND_MAX_AGE_MS = 5 * 60 * 1000; // 5 minutos
+
 const waClient = {
   sock: null,
   events: new EventEmitter(),
@@ -25,17 +29,28 @@ const waClient = {
   _lastEventAt: 0,
   _healthTimer: null,
   _lidToJid: new Map(), // @lid → @s.whatsapp.net
-  _msgStore: new Map(), // id → { message } — serve retry receipts (getMessage); cap ~1000 FIFO
+  _msgStore: new Map(), // id → { message, ts } — serve retry receipts (getMessage); cap ~1000 FIFO
 
   // Guarda conteúdo da msg enviada para reenvio em retry receipt.
   // Sem isso, getMessage retorna undefined e a msg fica "Aguardando mensagem" pra sempre.
   _rememberMsg(result) {
     if (result?.key?.id && result.message) {
-      this._msgStore.set(result.key.id, { message: result.message });
+      this._msgStore.set(result.key.id, { message: result.message, ts: Date.now() });
       if (this._msgStore.size > 1000) {
         this._msgStore.delete(this._msgStore.keys().next().value);
       }
     }
+  },
+
+  // Serve conteúdo no retry receipt — MAS só se a msg for recente.
+  // Reenviar announce antigo (pedido já entregue) o re-exibe pros motoboys após
+  // resync/multi-device → pedido fantasma, motoboy se desloca à toa = prejuízo.
+  // Teto de idade: retry legítimo de "Aguardando" chega em segundos; nada velho reenvia.
+  _getStoredMsg(id) {
+    const stored = this._msgStore.get(id);
+    if (!stored) return undefined;
+    if (Date.now() - stored.ts > RETRY_RESEND_MAX_AGE_MS) return undefined;
+    return stored.message;
   },
 
   // Resolve JID do tipo @lid para @s.whatsapp.net usando o mapa de contatos.
@@ -93,7 +108,7 @@ const waClient = {
       // Retry receipt: WA pede reenvio quando destinatário não decifra.
       // Servir conteúdo armazenado → Baileys re-encripta e reenvia → "Aguardando mensagem" some.
       // Retornar undefined (msg desconhecida) é seguro — só não reenvia.
-      getMessage: async (key) => this._msgStore.get(key.id)?.message || undefined,
+      getMessage: async (key) => this._getStoredMsg(key.id),
       logger: { level: 'silent', trace: () => {}, debug: () => {}, info: () => {}, warn: () => {}, error: () => {}, fatal: () => {}, child: () => ({ level: 'silent', trace: () => {}, debug: () => {}, info: () => {}, warn: () => {}, error: () => {}, fatal: () => {}, child: () => ({}) }) },
     });
 

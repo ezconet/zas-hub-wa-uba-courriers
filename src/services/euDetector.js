@@ -32,6 +32,11 @@ async function handleEu(msg) {
 
   const stanzaId = msg.message?.extendedTextMessage?.contextInfo?.stanzaId;
   const euMsgId = msg.key.id;
+  // Timestamp do servidor WA (hora real de envio), em ms. Independe de atraso de
+  // decrypt: se a msg do 1º motoboy chegar atrasada, o hub ainda ordena por envio real.
+  const waTs = msg.messageTimestamp
+    ? Number(msg.messageTimestamp) * 1000
+    : null;
 
   let orderId = null;
   let mode = null;
@@ -66,11 +71,17 @@ async function handleEu(msg) {
     return;
   }
 
-  _enqueue(orderId, motoboyJid, euMsgId, mode);
+  _enqueue(orderId, motoboyJid, euMsgId, mode, waTs);
 }
 
-function _enqueue(orderId, jid, msgId, mode) {
-  const entry = { jid, msgId, mode, receivedAt: new Date().toISOString() };
+function _enqueue(orderId, jid, msgId, mode, waTs) {
+  const entry = {
+    jid,
+    msgId,
+    mode,
+    receivedAt: new Date().toISOString(), // hora de chegada local (pode atrasar por decrypt)
+    waTimestamp: waTs,                     // hora real de envio no servidor WA (ms) — ordenar por isto
+  };
 
   if (!orderQueue.has(orderId)) {
     // Primeiro "eu" — abre a janela de coleta (R10: nunca processa imediato).
