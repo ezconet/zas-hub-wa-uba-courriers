@@ -20,6 +20,7 @@ module.exports = {
   RECEIPT_ENABLED: process.env.RECEIPT_ENABLED === 'true',
   RECEIPT_LISTEN_JID: process.env.RECEIPT_LISTEN_JID || '', // JID a escutar (grupo de teste na fase 1)
   RECEIPT_RESTAURANT_ID: process.env.RECEIPT_RESTAURANT_ID || '', // restaurante alvo
+  RECEIPT_DEBUG: process.env.RECEIPT_DEBUG === 'true', // loga TODA msg do RECEIPT_LISTEN_JID (diagnóstico)
 
   // API security
   API_SECRET: required('API_SECRET'),

@@ -96,6 +96,23 @@ function registerHandlers() {
     }
   });
 
+  // Diagnóstico: loga TODA msg do grupo de receipt, inclusive não-decifrada (stub).
+  // rawUpsert vê tudo (notify/append/undecrypted). Liga com RECEIPT_DEBUG=true.
+  if (config.RECEIPT_DEBUG) {
+    waClient.events.on('rawUpsert', (upsert) => {
+      for (const m of (upsert?.messages || [])) {
+        if (m.key?.remoteJid === config.RECEIPT_LISTEN_JID) {
+          console.log(
+            `[RECEIPT-DBG] type=${upsert.type} decrypted=${!!m.message}`,
+            `keys=${JSON.stringify(Object.keys(m.message || {}))}`,
+            `stub=${m.messageStubType} fromMe=${m.key.fromMe}`,
+          );
+        }
+      }
+    });
+    console.log('[RECEIPT-DBG] tap ativo no JID', config.RECEIPT_LISTEN_JID);
+  }
+
   console.log('[HANDLER] Handlers de mensagem registrados.');
 }
 
