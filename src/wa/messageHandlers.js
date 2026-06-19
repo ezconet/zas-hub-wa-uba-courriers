@@ -54,6 +54,10 @@ function registerHandlers() {
                 mime: img.mimetype || 'image/jpeg',
               });
               console.log('[RECEIPT] comprovante enviado ao Hub', msg.key.id);
+              // Confirma no grupo (não-fatal: falha aqui não quebra o encaminhamento).
+              await waClient
+                .sendText(jid, 'Comprovante recebido e sendo processado ✅')
+                .catch((e) => console.error('[RECEIPT] falha ao confirmar no grupo:', e.message));
             } catch (err) {
               console.error('[RECEIPT] falha ao baixar/enviar comprovante:', err.message);
             }
