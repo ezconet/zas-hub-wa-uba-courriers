@@ -1,8 +1,17 @@
+const { downloadMediaMessage } = require('@whiskeysockets/baileys');
 const config = require('../config');
 const waClient = require('./client');
 const db = require('../db/database');
 const euDetector = require('../services/euDetector');
 const health = require('../services/health');
+const webhook = require('../services/webhook');
+
+// Logger silencioso para downloadMediaMessage (mesma forma pino-like usada no client.js).
+const silentLogger = {
+  level: 'silent',
+  trace() {}, debug() {}, info() {}, warn() {}, error() {}, fatal() {},
+  child() { return silentLogger; },
+};
 
 function extractText(msg) {
   return (
@@ -26,6 +35,32 @@ function registerHandlers() {
         if (!msg.message) continue;
 
         const jid = msg.key.remoteJid;
+
+        // RECEIPT: imagem vinda do recebedor → baixa e encaminha pro Hub (OCR).
+        // Antes do fluxo de "eu". Idempotente no Hub (dedupe por msgId).
+        if (config.RECEIPT_ENABLED && jid === config.RECEIPT_LISTEN_JID) {
+          const img = msg.message?.imageMessage;
+          if (img) {
+            try {
+              const buf = await downloadMediaMessage(msg, 'buffer', {}, {
+                logger: silentLogger,
+                reuploadRequest: (m) => waClient.sock.updateMediaMessage(m),
+              });
+              await webhook.sendReceipt({
+                restaurantId: config.RECEIPT_RESTAURANT_ID,
+                jid,
+                msgId: msg.key.id,
+                imageBase64: buf.toString('base64'),
+                mime: img.mimetype || 'image/jpeg',
+              });
+              console.log('[RECEIPT] comprovante enviado ao Hub', msg.key.id);
+            } catch (err) {
+              console.error('[RECEIPT] falha ao baixar/enviar comprovante:', err.message);
+            }
+            continue; // imagem tratada — não cai no fluxo de "eu"
+          }
+        }
+
         const text = extractText(msg).trim().toLowerCase();
         if (text !== 'eu') continue;
 

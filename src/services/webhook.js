@@ -34,4 +34,9 @@ function sendQr(url, expiresAt) {
   return postWebhook('/wa/qr', { url, expiresAt });
 }
 
-module.exports = { postWebhook, sendEuReceived, sendConnected, sendQr };
+// Comprovante (imagem) do recebedor → Hub faz OCR/dedupe/match. Idempotente por msgId.
+function sendReceipt({ restaurantId, jid, msgId, imageBase64, mime }) {
+  return postWebhook('/wa/receipt-received', { restaurantId, jid, msgId, imageBase64, mime });
+}
+
+module.exports = { postWebhook, sendEuReceived, sendConnected, sendQr, sendReceipt };

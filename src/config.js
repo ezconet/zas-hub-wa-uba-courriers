@@ -16,6 +16,11 @@ module.exports = {
   ZASHUB_WEBHOOK_URL: required('ZASHUB_WEBHOOK_URL'),
   ZASHUB_WEBHOOK_SECRET: required('ZASHUB_WEBHOOK_SECRET'),
 
+  // Comprovante de motoboy (OCR no Hub) — escuta imagem do recebedor e encaminha
+  RECEIPT_ENABLED: process.env.RECEIPT_ENABLED === 'true',
+  RECEIPT_LISTEN_JID: process.env.RECEIPT_LISTEN_JID || '', // JID a escutar (grupo de teste na fase 1)
+  RECEIPT_RESTAURANT_ID: process.env.RECEIPT_RESTAURANT_ID || '', // restaurante alvo
+
   // API security
   API_SECRET: required('API_SECRET'),
 
