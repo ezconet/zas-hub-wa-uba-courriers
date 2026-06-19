@@ -30,14 +30,14 @@ function registerHandlers() {
   waClient.events.on('messages', async (messages) => {
     for (const msg of messages) {
       try {
-        // R13: ignorar mensagens próprias (evita loop ao enviar no grupo)
-        if (msg.key.fromMe) continue;
         if (!msg.message) continue;
 
         const jid = msg.key.remoteJid;
 
-        // RECEIPT: imagem vinda do recebedor → baixa e encaminha pro Hub (OCR).
-        // Antes do fluxo de "eu". Idempotente no Hub (dedupe por msgId).
+        // RECEIPT: imagem do recebedor → baixa e encaminha pro Hub (OCR).
+        // ANTES do guard fromMe: o operador encaminha o comprovante pela MESMA conta
+        // pareada na API → a msg chega com fromMe=true. Só dispara em imageMessage,
+        // então nosso announce/confirmação (texto) não entra aqui — sem loop.
         if (config.RECEIPT_ENABLED && jid === config.RECEIPT_LISTEN_JID) {
           const img = msg.message?.imageMessage;
           if (img) {
@@ -64,6 +64,9 @@ function registerHandlers() {
             continue; // imagem tratada — não cai no fluxo de "eu"
           }
         }
+
+        // R13: do "eu" pra baixo, ignorar mensagens próprias (evita loop ao enviar no grupo).
+        if (msg.key.fromMe) continue;
 
         const text = extractText(msg).trim().toLowerCase();
         if (text !== 'eu') continue;
