@@ -57,7 +57,9 @@ async function main() {
   // Middleware global: x-api-key obrigatório, exceto rotas públicas (S02)
   app.addHook('onRequest', async (request, reply) => {
     if (PUBLIC_ROUTES.has(request.url.split('?')[0])) return;
-    const key = request.headers['x-api-key'];
+    // Fallback querystring ?key= para chamadas via browser/celular (S17 GET).
+    // Atenção: key vaza em logs/nginx — usar só para reconexão pontual.
+    const key = request.headers['x-api-key'] || (request.query && request.query.key);
     if (!key || key !== config.API_SECRET) {
       reply.code(401).send({ error: 'unauthorized' });
     }
