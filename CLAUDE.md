@@ -102,7 +102,28 @@ Resumo:
 - `POST /message/send` — msg privada
 - `POST /dispatch/enable|disable` + `GET /dispatch/status`
 - `GET /health/ping` + `GET /health/retest` + `GET /health/status`
-- `POST /auth/reconnect`
+- `POST /auth/reconnect` (body `{ wipe: true }` → apaga auth + QR novo)
+- `GET /auth/reconnect?key=SECRET&wipe=1` — browser-clickable p/ celular
+
+## Produção (VM)
+
+| Item | Valor |
+|---|---|
+| VM | `ubuntu@ip-172-30-4-201` (AWS) |
+| Pasta projeto | `/opt/courrier-notify` (compose + `.env` aqui) |
+| Container | `zas-hub-wa-api` (porta 127.0.0.1:3001) |
+| Host público | `https://wa-courrier-notify.mobifyme.com.br` |
+| Volume auth | `/opt/courrier-notify/auth/baileys_auth` (sessão WA — `wipe` apaga isto) |
+| Outro container | `evolution_api` (8080) — legado, não é este projeto |
+
+**Deploy:**
+```bash
+cd /opt/courrier-notify && git pull origin main && docker compose up -d --build
+```
+
+**Forçar re-pareamento (QR novo por email):** abrir no browser do celular
+`https://wa-courrier-notify.mobifyme.com.br/auth/reconnect?key=<API_SECRET>&wipe=1`
+(API_SECRET está no `.env` de prod — nunca commitar aqui)
 
 ## Webhooks disparados (API → ZasHub)
 
