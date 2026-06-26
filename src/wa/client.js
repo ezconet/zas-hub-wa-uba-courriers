@@ -68,6 +68,13 @@ const waClient = {
     return this._connected && !!this.sock;
   },
 
+  // Extrai só os dígitos do telefone de um JID, p/ logs legíveis (validação visual).
+  // Espera JID já resolvido (lid→jid); p/ @lid não resolvido retorna o número do lid.
+  phoneOf(jid) {
+    if (!jid) return '?';
+    return String(jid).split('@')[0].split(':')[0];
+  },
+
   // Força reconexão: encerra o socket; o handler de connection.update 'close'
   // reconecta automaticamente (statusCode != loggedOut).
   reconnect() {

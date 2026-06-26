@@ -3,6 +3,7 @@ const db = require('../db/database');
 const waClient = require('../wa/client');
 const webhook = require('../services/webhook');
 const log = require('../utils/logger').createLogger('DISPATCH');
+const flow = require('../utils/logger').createLogger('FLOW');
 
 // S20: a API não espaça envios. O caller (ZasHub) deve dar ~500ms entre announces
 // consecutivos — WhatsApp trata rajadas como spam e pode bloquear o número (R04).
@@ -26,6 +27,7 @@ module.exports = async function dispatchRoutes(fastify) {
       return reply.code(400).send({ error: 'orderId e text obrigatórios' });
     }
 
+    flow.info(`ANNOUNCE solicitado pelo Hub | pedido=${orderId}`);
     // R02: enviar PRIMEIRO. Se o envio WA falhar → não salvar no DB,
     // não retornar sucesso. Próximo ciclo do ZasHub reenvia.
     const result = await waClient.sendText(config.WA_GROUP_JID, text);
@@ -38,7 +40,7 @@ module.exports = async function dispatchRoutes(fastify) {
     // Announce = rodada nova: reabre escuta de "eu" caso o pedido tenha sido
     // disparado antes (ex: vencedor recusou e ZasHub re-anuncia).
     db.clearEuDispatched(orderId);
-    log.info(`announce pedido=${orderId} msgId=${msgId}`);
+    flow.info(`ANNOUNCE enviado ao grupo | pedido=${orderId} | msgId=${msgId} | escutando "eu"...`);
     return { msgId };
   });
 
@@ -56,23 +58,32 @@ module.exports = async function dispatchRoutes(fastify) {
       return reply.code(400).send({ error: 'euMsgId e emoji obrigatórios' });
     }
 
+    const winnerPhone = waClient.phoneOf(euJid);
+    flow.info(`REACT solicitado pelo Hub (winner) | pedido=${orderId || '-'} | winner_phone=${winnerPhone} | emoji=${emoji} | euMsgId=${euMsgId}`);
+
     if (config.REACT_GUARD_ENABLED) {
       // Sem orderId não há como validar → fail-closed (não reage).
       if (!orderId) {
-        log.warn(`react skip: orderId ausente euMsgId=${euMsgId} (guard fail-closed)`);
+        flow.warn(`REACT BLOQUEADO (guard: sem orderId) | winner_phone=${winnerPhone} | euMsgId=${euMsgId}`);
         return reply.code(409).send({ ok: false, skipped: true, reason: 'orderId ausente' });
       }
       const eligible = await webhook.isOrderEligible(orderId);
       if (!eligible) {
-        log.warn(`react skip: pedido ${orderId} não elegível (guard fail-closed) euMsgId=${euMsgId}`);
+        flow.warn(`REACT BLOQUEADO (guard: pedido não elegível/READY) | pedido=${orderId} | winner_phone=${winnerPhone}`);
         return reply.code(409).send({ ok: false, skipped: true, reason: 'not_eligible' });
       }
     }
 
+    // SHADOW: não aplica o 👍 — só loga o que faria. Operador marca manual e valida.
+    if (config.REACT_DRY_RUN) {
+      flow.warn(`REACT DRY-RUN (NÃO reagiu — marque na mão) | pedido=${orderId || '-'} | winner_phone=${winnerPhone} | euMsgId=${euMsgId}`);
+      return { ok: true, dryRun: true, winnerPhone, euMsgId };
+    }
+
     const msgKey = { remoteJid: config.WA_GROUP_JID, id: euMsgId, fromMe: false };
     if (euJid) msgKey.participant = euJid;
-    log.info(`react euMsgId=${euMsgId} euJid=${euJid || '-'} orderId=${orderId || '-'} emoji=${emoji}`);
     await waClient.sendReaction(config.WA_GROUP_JID, msgKey, emoji);
+    flow.info(`REACT aplicado 👍 | pedido=${orderId || '-'} | winner_phone=${winnerPhone}`);
     return { ok: true };
   });
 

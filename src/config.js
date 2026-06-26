@@ -19,6 +19,9 @@ module.exports = {
   // Spec 099 — guard de elegibilidade antes do react 👍 (consulta Hub order-status).
   // Default ON (fail-closed). Desligar só p/ rollback se o Hub não tiver o endpoint.
   REACT_GUARD_ENABLED: (process.env.REACT_GUARD_ENABLED || 'true') === 'true',
+  // SHADOW: roda todo o fluxo e loga o winner, mas NÃO aplica o 👍 (marca-se manual).
+  // Default ON enquanto a atribuição/winner está sob validação. false = volta a reagir.
+  REACT_DRY_RUN: (process.env.REACT_DRY_RUN || 'true') === 'true',
 
   // Comprovante de motoboy (OCR no Hub) — escuta imagem do recebedor e encaminha
   RECEIPT_ENABLED: process.env.RECEIPT_ENABLED === 'true',
@@ -52,6 +55,14 @@ module.exports = {
   AUTH_PATH: process.env.AUTH_PATH || './auth/baileys_auth',
   DB_PATH: process.env.DB_PATH || './data/state.db',
   DISPATCH_QUEUE_WINDOW_MS: parseInt(process.env.DISPATCH_QUEUE_WINDOW_MS || '4000', 10),
+  // Anti "eu" de outro comércio: plain "eu" (sem quote) só conta se o nosso último
+  // announce for recente. 0 = desligado (comportamento antigo). Ex: 120000 = 2min.
+  PLAIN_EU_MAX_AGE_MS: parseInt(process.env.PLAIN_EU_MAX_AGE_MS || '0', 10),
+  // Resposta não precede o estímulo: plain "eu" enviado ANTES do nosso announce não
+  // pode ser do nosso pedido (é de outro comércio). Rejeita. Default ON.
+  PLAIN_EU_REQUIRE_AFTER_ANNOUNCE: (process.env.PLAIN_EU_REQUIRE_AFTER_ANNOUNCE || 'true') === 'true',
+  // Folga p/ skew de relógio (waTimestamp WA vs sent_at do nosso insert). Default 5s.
+  PLAIN_EU_AFTER_GRACE_MS: parseInt(process.env.PLAIN_EU_AFTER_GRACE_MS || '5000', 10),
   LOG_LEVEL: (process.env.LOG_LEVEL || 'info').toLowerCase(),
 
   // Watchdog de "grupo mudo" (sender-keys quebradas: msgs chegam mas não decifram).
