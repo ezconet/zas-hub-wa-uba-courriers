@@ -28,6 +28,8 @@ const waClient = {
   _connected: false,
   _lastEventAt: 0,
   _healthTimer: null,
+  _reconnectAttempts: 0,   // backoff: zera ao abrir conexão
+  _reconnectTimer: null,   // timer do reconnect agendado (evita agendar 2x)
   _lidToJid: new Map(), // @lid → @s.whatsapp.net
   _msgStore: new Map(), // id → { message, ts } — serve retry receipts (getMessage); cap ~1000 FIFO
 
@@ -73,6 +75,23 @@ const waClient = {
     console.warn('[WA] Reconexão forçada solicitada.');
     this._connecting = false;
     this.sock.end(undefined);
+  },
+
+  // Reconexão com backoff exponencial (2s → 60s cap). Evita tempestade close→connect
+  // que vaza sockets/listeners e satura o event loop (sintoma: container unhealthy/504).
+  // Idempotente: se já há reconnect agendado, não agenda outro.
+  _scheduleReconnect() {
+    if (this._reconnectTimer) return;
+    const attempt = this._reconnectAttempts++;
+    const delay = Math.min(2000 * 2 ** attempt, 60000);
+    console.warn(`[WA] Reconnect agendado em ${delay}ms (tentativa ${attempt + 1}).`);
+    this._reconnectTimer = setTimeout(() => {
+      this._reconnectTimer = null;
+      this.connect().catch((e) => {
+        console.error('[WA] Falha no reconnect agendado:', e.message);
+        this._scheduleReconnect();
+      });
+    }, delay);
   },
 
   // Repair forçado: apaga sessão + reconecta → Baileys gera QR novo (qrNotifier notifica).
@@ -128,6 +147,8 @@ const waClient = {
         console.log('[WA] WhatsApp conectado com sucesso!');
         this._connecting = false;
         this._connected = true;
+        this._reconnectAttempts = 0; // conexão ok → zera backoff
+        if (this._reconnectTimer) { clearTimeout(this._reconnectTimer); this._reconnectTimer = null; }
         this._lastEventAt = Date.now();
         this._startHealthCheck();
         this.events.emit('connected', new Date().toISOString());
@@ -155,19 +176,21 @@ const waClient = {
         this.events.emit('disconnected');
         const statusCode = lastDisconnect?.error?.output?.statusCode;
 
+        // Limpa listeners do socket morto: sem isso cada reconexão vaza handlers
+        // (connection.update, ev.process...) → memória/CPU sobem → unhealthy/504.
+        try { sock.ev.removeAllListeners(); } catch { /* ev pode não suportar */ }
+
         if (statusCode === DisconnectReason.loggedOut) {
-          // Sessão inválida: limpa credenciais e reconecta — Baileys emite novo QR
+          // Sessão inválida: limpa credenciais — próximo connect() emite novo QR
           // (qrNotifier sobe pro S3 + SNS + webhook /wa/qr).
           console.warn('[WA] Logout detectado. Limpando sessão e gerando novo QR...');
           this._wipeAuth();
-          this._connecting = false;
-          await this.connect();
         } else {
-          // Queda transitória: reconecta mantendo a sessão.
-          console.warn(`[WA] Conexão encerrada (código ${statusCode}). Reconectando...`);
-          this._connecting = false;
-          await this.connect();
+          // Queda transitória: reconecta mantendo a sessão (com backoff).
+          console.warn(`[WA] Conexão encerrada (código ${statusCode}). Reconectando com backoff...`);
         }
+        this._connecting = false;
+        this._scheduleReconnect();
       }
     });
 
